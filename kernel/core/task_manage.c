@@ -118,6 +118,86 @@ void process_create(void (*func)(void), uint32_t pid, uint8_t priority, int *max
     }
 }
 
+/* kernel/core/task_manage.c */
+
+void os_task_kill(int pid) {
+
+    /* 1. Vào vùng an toàn để không ai can thiệp lúc đang thao tác */
+    OS_ENTER_CRITICAL();
+
+    /* 2. Kiểm tra PID có hợp lệ không */
+    if (pid < 0 || pid >= MAX_PROCESSES || pcb_table[pid].pid == -1) {
+        uart_print("Error: PID not found.\r\n");
+        OS_EXIT_CRITICAL();
+        return;
+    }
+
+    /* 3. Đánh dấu Task là "Đã chết" */
+    pcb_table[pid].state = PROC_TERMINATED;
+    
+    uart_print("Task Killed: ");
+    uart_print_dec(pid);
+    uart_print("\r\n");
+
+    /* 4. Xử lý trường hợp đặc biệt: TỰ SÁT (Self-Kill) 
+       Nếu Task đang chạy (current_pcb) tự gọi hàm kill chính nó,
+       nó không thể chạy thêm dòng code nào nữa sau dòng này.
+       -> Phải gọi Scheduler để chuyển sang Task khác ngay lập tức.
+    */
+    if (pid == current_pcb->pid) {
+        OS_EXIT_CRITICAL();   // Mở khóa ngắt để PendSV có thể chạy
+        process_schedule();   // Yêu cầu đổi Task ngay
+        while(1);             // Đứng đây chờ chết (không bao giờ thoát ra)
+    }
+
+    /* 5. Nếu kill task khác thì cứ mở khóa và chạy tiếp bình thường */
+    OS_EXIT_CRITICAL();
+}
+
+/* Hàm tạm dừng Task */
+void os_task_suspend(int pid) {
+    OS_ENTER_CRITICAL();
+    
+    // Kiểm tra PID hợp lệ và Task đang tồn tại
+    if (pid >= 0 && pid < MAX_PROCESSES && pcb_table[pid].pid != -1) {
+        // Chỉ suspend nếu Task chưa chết
+        if (pcb_table[pid].state != PROC_TERMINATED) {
+            pcb_table[pid].state = PROC_SUSPENDED;
+            uart_print("Task Suspended: ");
+            uart_print_dec(pid);
+            uart_print("\r\n");
+
+            // Nếu tự suspend chính mình -> Phải nhường CPU ngay
+            if (pid == current_pcb->pid) {
+                OS_EXIT_CRITICAL();
+                process_schedule();
+                return;
+            }
+        }
+    }
+    OS_EXIT_CRITICAL();
+}
+
+/* Hàm khôi phục Task */
+void os_task_resume(int pid) {
+    OS_ENTER_CRITICAL();
+
+    if (pid >= 0 && pid < MAX_PROCESSES && pcb_table[pid].pid != -1) {
+        // Chỉ resume nếu Task đang bị SUSPENDED
+        if (pcb_table[pid].state == PROC_SUSPENDED) {
+            pcb_table[pid].state = PROC_READY;
+            
+            // Thêm lại vào hàng đợi ưu tiên (QUAN TRỌNG)
+            add_task_to_ready_queue(&pcb_table[pid]);
+            
+            uart_print("Task Resumed: ");
+            uart_print_dec(pid);
+            uart_print("\r\n");
+        }
+    }
+    OS_EXIT_CRITICAL();
+}
+
 void prvIdleTask(void){
     while(1){
         __asm("wfi"); 

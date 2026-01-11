@@ -144,6 +144,10 @@ extern uint32_t top_ready_priority_bitmap;
 void os_kernel_init(void);
 void process_create(void (*func)(void), uint32_t pid, uint8_t priority, int *max_res);
 void process_set_state(uint32_t pid, process_state_t new_state); // Nếu bạn viết hàm này
+void os_task_kill(int pid);
+void os_task_exit(void);
+void os_task_suspend(int pid);
+void os_task_resume(int pid);
 void prvIdleTask(void);
 
 /* --- Nhóm 2: Hàm trong scheduler.c --- */
@@ -159,6 +163,8 @@ void process_timer_tick(void);
 
 /* --- Nhóm 4: Hàm trong utils.c --- */
 const char* process_state_str(process_state_t state);
+int my_strcmp(const char *s1, const char *s2);
+int my_strncmp(const char *s1, const char *s2, int n);
 
 /* --- Nhóm 5: Các hàm chưa dùng tới hoặc chưa phân nhóm --- */
 // Nếu chưa dùng thì có thể comment lại để code gọn

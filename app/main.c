@@ -1,90 +1,97 @@
 #include "uart.h"
 #include "systick.h"
 #include "kernel.h"
-#include "task.h"
+#include "task.h"       // Chứa prototype các task và extern
 #include "sync.h" 
 #include "mpu.h"
 #include "ipc.h"
 #include <stdint.h>
+#include <stddef.h>     // Để dùng NULL
 #include "gpio.h"
 
+/* ================================================= */
+/* CẤU HÌNH HỆ THỐNG                                 */
+/* ================================================= */
+#define SYSTEM_CLOCK      50000000 // Clock MCU (50MHz)
+#define SYSTICK_RATE      10000000 // Reload value để tạo ngắt mỗi 0.2s (hoặc chỉnh theo ý muốn)
+
+/* ================================================= */
+/* ĐỊNH NGHĨA TÀI NGUYÊN TOÀN CỤC (GLOBAL RESOURCES) */
+/* ================================================= */
+/* BẮT BUỘC: Phải định nghĩa các biến này ở đây để cấp phát RAM.
+   File task.h chỉ khai báo extern (cho biết sự tồn tại), 
+   còn ở đây mới là nơi tạo ra chúng thực sự. */
+
+// 1. Biến trạng thái hệ thống
 
 
-#define SYSTEM_CLOCK      80000000 // clock mcu 
-#define SYSTICK_RATE      8000000  // set systick reload để tạo ngắt mỗi 0.1s (10Hz)
-#define LED_PORT  GPIO_PORTF_BASE
-#define LED_PIN   GPIO_PIN_0 
-// nhịp tim của hệ điều hành, nó sẽ đếm từ  8 000 000 về 0
+/* ================================================= */
+/* DỮ LIỆU RIÊNG CHO CÁC TASK                        */
+/* ================================================= */
+// Tài nguyên yêu cầu tối đa cho Banker's Algorithm
+// Nên để toàn cục để đảm bảo dữ liệu không bị mất
+int max_res_t1[] = {0, 0, 2}; 
+int max_res_t2[] = {0, 0, 2};
 
+/* ================================================= */
+/* MAIN FUNCTION                                     */
+/* ================================================= */
 
-
+/* Hàm delay đơn giản */
 void delay(volatile unsigned int count) {
     while (count--) {
         __asm("nop");
     }
 }
 
-
-/* Cấu hình chân LED cho board LM3S6965 */
-
-
-// void Task_Blink(void) {
-//     gpio_init(LED_PORT, LED_PIN, GPIO_DIR_OUTPUT);
-//     uart_print("GPIO Init Done. Starting Blink Loop...\n");
-
-//     /* [SỬA LỖI 1] Xóa dòng này đi vì biến 'state' không được dùng */
-//     // int state = 0;  <-- XÓA DÒNG NÀY
-
-//     while(1) {
-//         gpio_toggle(LED_PORT, LED_PIN);
-        
-//         uint32_t pin_value = gpio_read(LED_PORT, LED_PIN);
-        
-//         if (pin_value) {
-//             uart_print("[GPIO CHECK] LED state: ON  (Bit=1)\n");
-//         } else {
-//             uart_print("[GPIO CHECK] LED state: OFF (Bit=0)\n");
-//         }
-        
-//         os_delay(1000); 
-//     }
-// }
-
-/* --- MAIN --- */
 int main(void) {
-    //bsp_init_system_clock();
+    /* 1. Khởi tạo phần cứng cơ bản */
+    // bsp_init_system_clock(); // Bỏ comment nếu cần cấu hình PLL
     uart_init();
+    
+    /* 2. Khởi tạo Kernel */
     os_kernel_init();
 
+    /* 3. Khởi tạo Tài nguyên (IPC & Sync) */
     msg_queue_init(&temp_queue);
     mutex_init(&app_mutex);
     mutex_init(&mutex_A);
     mutex_init(&mutex_B);
-    int max_res_t1[] = {0, 0, 2}; 
-    int max_res_t2[] = {0, 0, 2};
-    
-    uart_print("\033[2J"); // Lệnh xóa màn hình terminal (nếu hỗ trợ)
+
+    /* 4. In thông báo khởi động */
+    uart_print("\033[2J"); // Xóa màn hình terminal
     uart_print("MyOS IoT System Booting...\r\n");
-    //delay(5000000); // Chờ khởi động
-
-    /* Tạo các task với chức năng cụ thể */
-    //process_create(Task_Blink, 1, 7, NULL);
+    
+    /* 5. Tạo các Task (Process) */
+    
+    // --- Nhóm IoT & System ---
     process_create(task_sensor_update, 1, 4, NULL); 
-    process_create(task_display, 2, 2, NULL);       
-    process_create(task_alarm, 3, 3, NULL);         
-    process_create(task_logger , 4, 4, NULL);              
-    process_create(task_shell, 5, 1, NULL);
-    process_create(task_deadlock_1,6, 5, NULL);
-    process_create(task_deadlock_2,7, 5, NULL);
-    process_create(task_banker1, 8, 4, max_res_t1);
-    process_create(task_banker2, 9, 4, max_res_t2);
-    //process_admit_jobs();
+    process_create(task_display,       2, 2, NULL);       
+    process_create(task_alarm,         3, 3, NULL);         
+    process_create(task_logger,        4, 4, NULL);              
+    process_create(task_shell,         5, 1, NULL);
 
-    /* Khởi động nhịp tim hệ thống */
-    systick_init(SYSTICK_RATE); // kích hoạt hệ thống 
+    // --- Nhóm Test Deadlock ---
+    process_create(task_deadlock_1,    6, 5, NULL);
+    process_create(task_deadlock_2,    7, 5, NULL);
 
+    // --- Nhóm Test Banker's Algorithm ---
+    process_create(task_banker1,       8, 4, max_res_t1);
+    process_create(task_banker2,       9, 4, max_res_t2);
+
+    // --- Nhóm Test Drivers ---
+    // process_create(task_gpio_blink, 10, 5, NULL); // Task nháy đèn (Tạm tắt)
+    //process_create(task_i2c_scanner,   10, 5, NULL); // Task quét I2C (Mới thêm)
+    //process_create(task_dma_test, 10, 5, NULL); // Task test DMA
+
+    /* 6. Khởi động System Tick (Nhịp tim hệ điều hành) */
+    // Khi hàm này chạy, Scheduler sẽ bắt đầu hoạt động
+    systick_init(SYSTICK_RATE); 
+
+    /* 7. Vòng lặp Idle */
     while (1) {
-        // Idle task: Có thể dùng để tính toán uptime hoặc ngủ tiết kiệm điện
-        // Ở đây ta để trống để nhường CPU cho các task kia
+        // CPU sẽ chạy vào đây khi không có task nào khác hoạt động
+        // Có thể đưa CPU vào chế độ ngủ (Sleep mode) để tiết kiệm điện
+        // __asm("wfi"); // Wait For Interrupt
     }
 }

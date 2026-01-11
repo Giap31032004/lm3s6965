@@ -17,6 +17,9 @@ PCB_t *next_pcb = NULL;
 extern void start_first_task(uint32_t *first_sp); // Từ assembly
 
 void add_task_to_ready_queue(PCB_t *p) {
+    if (p->state == PROC_TERMINATED) {
+        return; 
+    }
     uint8_t prio = p->dynamic_priority;
     if(prio >= MAX_PRIORITY) prio = MAX_PRIORITY - 1;
 
@@ -43,57 +46,109 @@ PCB_t* get_highest_priority_ready_task() {
 }
 
 void process_schedule(void) {
-    /* 1. Vào vùng găng để tránh ngắt chen ngang lúc tính toán */
     OS_ENTER_CRITICAL();
 
-    /* 2. Kiểm tra xem có task nào trong hàng đợi không */
-    if (top_ready_priority_bitmap == 0) {
-        OS_EXIT_CRITICAL();
-        return; // Không có việc gì làm -> Về (hoặc chạy Idle Task)
+    /* ---------------------------------------------------------
+       BƯỚC 1 & 2 & 3: Lấy Task tiếp theo & Lọc bỏ Task đã chết
+       --------------------------------------------------------- */
+    PCB_t *pnext = NULL;
+    
+    while (1) {
+        if (top_ready_priority_bitmap == 0) {
+            // Nếu không còn task nào khác trong hàng đợi
+            if (current_pcb && current_pcb->state == PROC_RUNNING) {
+                // Task hiện tại vẫn chạy tốt -> Giữ nguyên nó
+                OS_EXIT_CRITICAL();
+                return; 
+            }
+            // Hệ thống thực sự rảnh rỗi (hoặc deadlock/hết task)
+            OS_EXIT_CRITICAL();
+            return;
+        }
+
+        pnext = get_highest_priority_ready_task();
+        
+        if (pnext != NULL) {
+            if (pnext->state == PROC_TERMINATED) {
+                uart_print("[SCHED] Skipping dead task PID: ");
+                uart_print_dec(pnext->pid);
+                uart_print("\r\n");
+                continue; 
+            }
+            break; // Tìm thấy ứng viên hợp lệ
+        } else {
+            OS_EXIT_CRITICAL();
+            return;
+        }
     }
 
-    /* 3. Lấy task có độ ưu tiên cao nhất */
-    PCB_t *pnext = get_highest_priority_ready_task();
-    if (!pnext) {
-        OS_EXIT_CRITICAL(); 
-        return;
+    /* ---------------------------------------------------------
+       BƯỚC 4: Xử lý Task hiện tại (Đưa về Ready hoặc Vứt đi)
+       --------------------------------------------------------- */
+    if (current_pcb != NULL) {
+        if (current_pcb->state == PROC_RUNNING) {
+            current_pcb->state = PROC_READY;
+            add_task_to_ready_queue(current_pcb);
+        }
+        else if (current_pcb->state == PROC_TERMINATED) {
+            uart_print("[SCHED] Dropping terminated task PID: ");
+            uart_print_dec(current_pcb->pid);
+            uart_print("\r\n");
+        }
     }
 
-    /* 4. Xử lý Task hiện tại (Nếu đang chạy thì đẩy về Ready) */
-    if (current_pcb != NULL && current_pcb->state == PROC_RUNNING) {
-        current_pcb->state = PROC_READY;
-        add_task_to_ready_queue(current_pcb);
+    /* ---------------------------------------------------------
+       [MỚI] IN LOG CHI TIẾT CHUYỂN NGỮ CẢNH
+       Chỉ in khi có sự thay đổi thực sự (Task cũ != Task mới)
+       --------------------------------------------------------- */
+    if (current_pcb != pnext) {
+        uart_print("[CTX] Switch: ");
+        
+        // In Task cũ
+        if (current_pcb == NULL) {
+            uart_print("BOOT");
+        } else {
+            uart_print("PID ");
+            uart_print_dec(current_pcb->pid);
+            // In thêm độ ưu tiên để dễ debug
+            uart_print("(Prio ");
+            uart_print_dec(current_pcb->dynamic_priority);
+            uart_print(")");
+        }
+
+        uart_print(" -> ");
+
+        // In Task mới
+        uart_print("PID ");
+        uart_print_dec(pnext->pid);
+        uart_print("(Prio ");
+        uart_print_dec(pnext->dynamic_priority);
+        uart_print(")\r\n");
     }
 
-    /* 5. Cấu hình Task mới */
-    // Chỉ cập nhật biến toàn cục next_pcb để PendSV dùng
+    /* ---------------------------------------------------------
+       BƯỚC 5 & 6: Cấu hình và Chuyển ngữ cảnh
+       --------------------------------------------------------- */
     next_pcb = pnext;      
     pnext->state = PROC_RUNNING;
-
-    /* [QUAN TRỌNG] Cấu hình MPU cho Task sắp chạy 
-       Phải làm lúc này vì khi nhảy sang Task mới là MPU phải sẵn sàng rồi 
-    */
+    
+    // Cài đặt MPU cho task mới
     mpu_config_for_task(pnext);
 
-    uart_print("Switching to PID: ");
-    uart_print_dec(pnext->pid);
-    uart_print("\r\n");
-
-    /* 6. Phân loại chuyển ngữ cảnh */
+    /* Tối ưu: Nếu Task mới là Task cũ, không cần trigger PendSV làm gì */
+    if (current_pcb == pnext) {
+        OS_EXIT_CRITICAL();
+        return;
+    }
+    
     if (current_pcb == NULL) {
-        /* TRƯỜNG HỢP 1: Khởi động Task đầu tiên của hệ thống */
+        /* Trường hợp khởi động lần đầu */
         current_pcb = pnext;
-        
-        // start_first_task sẽ nhảy đi luôn và không bao giờ quay lại đây
-        // Nó sẽ tự lo việc bật lại ngắt (thông qua việc set PRIMASK = 0)
         start_first_task(current_pcb->stack_ptr); 
     } 
     else {
-        /* TRƯỜNG HỢP 2: Chuyển ngữ cảnh bình thường */
-        // Kích hoạt PendSV
+        /* Chuyển ngữ cảnh bình thường */
         SCB_ICSR |= PENDSVSET_BIT;
-        
-        // Thoát vùng găng để PendSV có thể xảy ra ngay sau dòng này
         OS_EXIT_CRITICAL();
     }
 }

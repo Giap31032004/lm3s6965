@@ -22,7 +22,7 @@ struct PCB_t; // Forward declaration of PCB_t
 #define MPU_CTRL_PRIVDEFENA_Msk (1UL << 2) // Bit cho phép vùng mặc định cho chế độ ưu tiên
 
 /* MPU Region Attribute and Size Register */
-#define MPU_RASR_ENABLE_Pos     0 // Bit kích hoạt vùng MPU
+#define MPU_RASR_ENABLE_Pos     0 // Bit kích hoạt vùng MPU 
 #define MPU_RASR_SIZE_Pos       1 // Vị trí kích thước vùng MPU
 #define MPU_RASR_SRD_Pos        8 // Vị trí byte bảo vệ con
 #define MPU_RASR_B_Pos          16 // Bit bộ nhớ bộ đệm 

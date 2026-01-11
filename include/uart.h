@@ -5,7 +5,7 @@
 #include "sync.h" // Chứa định nghĩa os_mutex_t và os_sem_t
 
 /* --- CẤU HÌNH --- */
-#define SYSTEM_CLOCK_HZ  50000000U // 50 MHz
+#define SYSTEM_CLOCK_HZ    50000000U  // Chọn 50MHz hoặc 80MHz tùy bạn, nhưng phải thống nhất
 #define UART_BAUDRATE    115200U
 
 /* --- PUBLIC FUNCTIONS --- */
@@ -24,5 +24,5 @@ void uart_print(const char *s);
 void uart_print_dec(uint32_t val);
 void uart_print_hex(uint8_t n);
 void uart_print_hex32(uint32_t n);
-
+void uart_putc_raw(char c);
 #endif // UART_H

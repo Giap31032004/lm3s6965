@@ -1,8 +1,8 @@
 #ifndef DMA_H
 #define DMA_H
 
-#include <stdint.h>  // <--- Thêm cái này để sửa lỗi uint32_t
-#include <stdbool.h> // <--- Thêm cái này để sửa lỗi bool
+#include <stdint.h>
+#include <stdbool.h>
 
 /* --- CẤU TRÚC BẢNG ĐIỀU KHIỂN --- */
 typedef struct {
@@ -12,10 +12,8 @@ typedef struct {
     volatile uint32_t unused;
 } dma_control_entry_t;
 
-/* --- PUBLIC FUNCTIONS (CHỈ KHAI BÁO, KHÔNG CÓ CODE) --- */
-
+/* --- PUBLIC FUNCTIONS --- */
 void dma_init(void);
-
 bool dma_memcpy(void *src, void *dst, uint32_t size);
 
 #endif // DMA_H

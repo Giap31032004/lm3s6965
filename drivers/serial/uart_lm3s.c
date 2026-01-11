@@ -218,3 +218,4 @@ void uart_print_hex32(uint32_t n) {
     // Dùng hàm in an toàn thread-safe
     uart_print(str);
 }
+
