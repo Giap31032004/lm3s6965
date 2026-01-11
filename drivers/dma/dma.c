@@ -21,8 +21,7 @@
 
 /* --- BẢNG ĐIỀU KHIỂN --- */
 // Phải align 1024 bytes (Yêu cầu phần cứng)
-static dma_control_entry_t dma_table[64] __attribute__((aligned(1024)));
-
+dma_control_entry_t dma_table[64] __attribute__((aligned(1024)));
 #define DMA_CH_SW  30
 
 /* --- IMPLEMENTATION (CODE THỰC THI NẰM Ở ĐÂY) --- */

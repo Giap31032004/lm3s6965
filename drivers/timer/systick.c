@@ -1,5 +1,6 @@
 #include "systick.h"
 #include "kernel.h"
+#include "uart.h"
 
 #define SYSTICK_BASE   0xE000E010
 #define SYSTICK_CTRL   (*(volatile uint32_t*)(SYSTICK_BASE + 0x00))
@@ -17,6 +18,13 @@ void systick_init(uint32_t ticks)
 
 void SysTick_Handler(void) 
 {
+    static int cnt = 0;
+    cnt++;
+    // Lightweight debug: print a dot every 10 ticks to avoid flooding
+    if ((cnt % 10) == 0) {
+        uart_putc_raw('.');
+    }
+
     // cập nhật giờ đánh thức
     process_timer_tick();
 

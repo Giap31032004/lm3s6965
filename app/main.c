@@ -16,13 +16,7 @@
 #define LED_PIN   GPIO_PIN_0 
 // nhịp tim của hệ điều hành, nó sẽ đếm từ  8 000 000 về 0
 
-os_msg_queue_t temp_queue; // Hàng đợi tin nhắn cho nhiệt độ
-os_mutex_t app_mutex; // chiếc khóa chung cho cả hệ thống
 
-// tạo deadlock giả
-os_mutex_t mutex_A;
-os_mutex_t mutex_B;
-// tạo deadlock giả
 
 void delay(volatile unsigned int count) {
     while (count--) {
@@ -71,7 +65,7 @@ int main(void) {
     
     uart_print("\033[2J"); // Lệnh xóa màn hình terminal (nếu hỗ trợ)
     uart_print("MyOS IoT System Booting...\r\n");
-    delay(5000000); // Chờ khởi động
+    //delay(5000000); // Chờ khởi động
 
     /* Tạo các task với chức năng cụ thể */
     //process_create(Task_Blink, 1, 7, NULL);

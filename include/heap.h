@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h> //  for create size_t
 
-#define HEAP_SIZE (32 * 1024)
+#define HEAP_SIZE (32 * 1024) // 32 KB heap size
 
 typedef struct mem_block {
     struct mem_block * next;

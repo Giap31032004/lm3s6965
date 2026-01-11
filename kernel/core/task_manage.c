@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "heap.h"
 #include "uart.h"
+#include "mpu.h"
 
 #define SCB_ICSR (*(volatile uint32_t*)0xE000ED04)
 #define PENDSVSET_BIT (1UL << 28)
@@ -34,7 +35,7 @@ void os_kernel_init(void) {
     uart_print("[OK] NVIC Configured (PendSV/SysTick lowest).\r\n");
 
     /* 3. KHỞI TẠO BỘ NHỚ & MPU */
-    //mpu_init();      // Bật hàng rào bảo vệ bộ nhớ
+    mpu_init();      // Bật hàng rào bảo vệ bộ nhớ
     os_mem_init();   // Init Heap
     
     /* Hàm này bạn phải viết trong banker.c để lưu vào biến Available[] */
@@ -80,7 +81,7 @@ void process_create(void (*func)(void), uint32_t pid, uint8_t priority, int *max
 
     // Stack alignment logic
     uint32_t addr = (uint32_t)stack_base + stack_size_bytes;
-    addr = addr & 0xFFFFFFF8;
+    addr = addr & 0xFFFFFFF8; // Align to 8 bytes
     uint32_t *sp = (uint32_t*)addr;
 
     /* Fake Context setup */

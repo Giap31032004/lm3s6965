@@ -43,40 +43,58 @@ PCB_t* get_highest_priority_ready_task() {
 }
 
 void process_schedule(void) {
+    /* 1. Vào vùng găng để tránh ngắt chen ngang lúc tính toán */
     OS_ENTER_CRITICAL();
 
+    /* 2. Kiểm tra xem có task nào trong hàng đợi không */
     if (top_ready_priority_bitmap == 0) {
         OS_EXIT_CRITICAL();
-        return;
+        return; // Không có việc gì làm -> Về (hoặc chạy Idle Task)
     }
 
+    /* 3. Lấy task có độ ưu tiên cao nhất */
     PCB_t *pnext = get_highest_priority_ready_task();
     if (!pnext) {
         OS_EXIT_CRITICAL(); 
         return;
     }
 
-    if (current_pcb != NULL) {
-        if (current_pcb->state == PROC_RUNNING) {
-            current_pcb->state = PROC_READY;
-            add_task_to_ready_queue(current_pcb);
-        }
+    /* 4. Xử lý Task hiện tại (Nếu đang chạy thì đẩy về Ready) */
+    if (current_pcb != NULL && current_pcb->state == PROC_RUNNING) {
+        current_pcb->state = PROC_READY;
+        add_task_to_ready_queue(current_pcb);
     }
 
+    /* 5. Cấu hình Task mới */
+    // Chỉ cập nhật biến toàn cục next_pcb để PendSV dùng
+    next_pcb = pnext;      
     pnext->state = PROC_RUNNING;
-    mpu_config_for_task(pnext);
-    OS_EXIT_CRITICAL();
 
-    uart_print("Switching to process ");
+    /* [QUAN TRỌNG] Cấu hình MPU cho Task sắp chạy 
+       Phải làm lúc này vì khi nhảy sang Task mới là MPU phải sẵn sàng rồi 
+    */
+    mpu_config_for_task(pnext);
+
+    uart_print("Switching to PID: ");
     uart_print_dec(pnext->pid);
     uart_print("\r\n");
 
+    /* 6. Phân loại chuyển ngữ cảnh */
     if (current_pcb == NULL) {
+        /* TRƯỜNG HỢP 1: Khởi động Task đầu tiên của hệ thống */
         current_pcb = pnext;
-        start_first_task(current_pcb->stack_ptr);
-    } else {
-        next_pcb = pnext;
+        
+        // start_first_task sẽ nhảy đi luôn và không bao giờ quay lại đây
+        // Nó sẽ tự lo việc bật lại ngắt (thông qua việc set PRIMASK = 0)
+        start_first_task(current_pcb->stack_ptr); 
+    } 
+    else {
+        /* TRƯỜNG HỢP 2: Chuyển ngữ cảnh bình thường */
+        // Kích hoạt PendSV
         SCB_ICSR |= PENDSVSET_BIT;
+        
+        // Thoát vùng găng để PendSV có thể xảy ra ngay sau dòng này
+        OS_EXIT_CRITICAL();
     }
 }
 
